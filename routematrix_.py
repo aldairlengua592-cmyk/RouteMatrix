@@ -1212,7 +1212,7 @@ def show_about() -> None:
         st.info("Juan Manuel Mattos Quevedo")
     with info2:
         st.markdown("### Fecha")
-        st.info("Lima, 19 de abril de 2026")
+        st.info("Lima, 23 de mayo de 2026")
 
     st.markdown("### Fundamento matematico")
     st.write(
