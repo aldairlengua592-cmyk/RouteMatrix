@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import html as html_lib
 from dataclasses import dataclass
@@ -17,9 +17,12 @@ except ImportError:  # Streamlit can still render a simpler map with st.map.
     pdk = None
 
 
+UPC_LOGO_URL = "https://enfoque.upc.edu.pe/wp-content/uploads/2018/11/logo-upc.png"
+
+
 st.set_page_config(
     page_title="RouteMatrix",
-    page_icon="🗺️",
+    page_icon=UPC_LOGO_URL,
     layout="wide",
 )
 
@@ -293,8 +296,12 @@ def init_state() -> None:
         st.session_state.last_result = None
     if "origin" not in st.session_state:
         st.session_state.origin = None
+    if "origin_select" not in st.session_state:
+        st.session_state.origin_select = None
     if "dest" not in st.session_state:
         st.session_state.dest = None
+    if "dest_select" not in st.session_state:
+        st.session_state.dest_select = None
     if "history" not in st.session_state:
         st.session_state.history = []
     if "active_section" not in st.session_state:
@@ -311,6 +318,7 @@ def init_state() -> None:
         and st.session_state.get("_digraph_origin_consumed") != digraph_selection
     ):
         st.session_state.origin = digraph_origin
+        st.session_state.origin_select = digraph_origin
         st.session_state.active_section = "Digrafo"
         st.session_state._digraph_origin_consumed = digraph_selection
 
@@ -326,6 +334,12 @@ def css() -> None:
             padding: 14px;
             border-radius: 12px;
         }
+        div[data-testid="stMetric"] * {
+            color: #f8fafc !important;
+        }
+        div[data-testid="stMetric"] svg {
+            fill: #dcfce7 !important;
+        }
         .hero {
             background:
                 linear-gradient(135deg, rgba(15,61,46,.94), rgba(22,101,52,.72)),
@@ -339,11 +353,70 @@ def css() -> None:
         .hero h1 { margin: 0; font-size: 34px; }
         .hero p { margin: 8px 0 0 0; color: rgba(255,255,255,.86); }
         .route-card {
-            border: 1px solid rgba(148,163,184,.35);
+            border: 1px solid rgba(22,101,52,.26);
             border-radius: 12px;
             padding: 14px;
-            background: rgba(15,23,42,.05);
+            background: rgba(34,197,94,.08);
             margin-bottom: 10px;
+        }
+        .city-card {
+            border: 1px solid rgba(74,222,128,.26);
+            border-radius: 12px;
+            overflow: hidden;
+            background: linear-gradient(145deg, #08111f, #0f241b);
+            min-height: 100%;
+            box-shadow: 0 12px 26px rgba(15,23,42,.22);
+            margin-bottom: 22px;
+        }
+        .city-visual {
+            min-height: 150px;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            padding: 18px;
+            background:
+                radial-gradient(circle at 24% 18%, rgba(74,222,128,.30), transparent 34%),
+                linear-gradient(135deg, #0f3d2e, #166534);
+            color: #f8fafc;
+        }
+        .city-visual strong {
+            display: block;
+            font-size: 24px;
+            line-height: 1.1;
+        }
+        .city-visual span {
+            display: block;
+            margin-top: 8px;
+            color: #bbf7d0;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .city-card-body { padding: 13px 14px 15px 14px; }
+        .city-card h3 {
+            margin: 0 0 4px 0;
+            font-size: 18px;
+            color: #f8fafc;
+        }
+        .city-card p {
+            margin: 8px 0 0 0;
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+        .city-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .city-tag {
+            border: 1px solid rgba(34,197,94,.25);
+            background: rgba(34,197,94,.12);
+            color: #bbf7d0;
+            border-radius: 999px;
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 700;
         }
         .digraph-shell {
             border: 1px solid rgba(148,163,184,.35);
@@ -664,25 +737,44 @@ def digraph_svg(
 
     pair_seen: dict[tuple[int, int], int] = {}
     edge_markup = []
+    selected_path_parts = []
     display_edges = visible_digraph_edges(visible_edges, route)
     for a, b, bidirectional in display_edges:
         key = tuple(sorted((a, b)))
         pair_seen[key] = pair_seen.get(key, 0) + 1
         offset = 10 if bidirectional else 18 if pair_seen[key] % 2 else -18
         selected = (a, b) in selected_edges
+        path_id = f"edge-{a}-{b}"
         stroke = "#f59e0b" if selected else "#34d399"
-        opacity = "0.96" if selected else "0.17"
-        width_px = "3.2" if selected else "1.4"
+        opacity = "0.22" if selected else "0.17"
+        width_px = "2.2" if selected else "1.4"
         marker_start = 'marker-start="url(#arrow-soft)" ' if bidirectional else ""
-        marker_end = (
-            'marker-end="url(#arrow-selected)"'
-            if selected
-            else 'marker-end="url(#arrow-soft)"'
-        )
+        marker_end = "" if selected else 'marker-end="url(#arrow-soft)"'
         edge_markup.append(
-            f'<path d="{svg_edge_path(positions[a], positions[b], offset)}" '
+            f'<path id="{path_id}" d="{svg_edge_path(positions[a], positions[b], offset)}" '
             f'fill="none" stroke="{stroke}" stroke-width="{width_px}" '
             f'stroke-opacity="{opacity}" {marker_start}{marker_end} />'
+        )
+        if selected:
+            selected_path_parts.append(
+                svg_edge_path(positions[a], positions[b], offset)
+            )
+
+    plane_markup = []
+    if route and len(route) > 1:
+        route_path = " ".join(selected_path_parts)
+        duration = max(5.0, (len(route) - 1) * 3.0)
+        plane_markup.append(
+            f'<path id="route-flight-path" d="{route_path}" fill="none" '
+            f'stroke="none" />'
+        )
+        plane_markup.append(
+            f'<g class="route-plane">'
+            f'<animateMotion dur="{duration:.1f}s" repeatCount="indefinite" rotate="auto">'
+            f'<mpath href="#route-flight-path" />'
+            f"</animateMotion>"
+            f'<use href="#plane-icon" />'
+            f"</g>"
         )
 
     degree_by_node = {
@@ -812,6 +904,10 @@ def digraph_svg(
         stroke-width: 2;
       }}
       .node circle {{ fill: #0f172a; stroke: #34d399; stroke-width: 2; }}
+      .route-plane {{
+        filter: drop-shadow(0 0 7px rgba(245,158,11,.85));
+        pointer-events: none;
+      }}
       .node-link {{ cursor: pointer; }}
       .node-link:hover .node circle {{
         stroke: #f59e0b;
@@ -869,11 +965,18 @@ def digraph_svg(
               markerWidth="8" markerHeight="8" orient="auto-start-reverse">
               <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
             </marker>
+            <g id="plane-icon">
+              <path d="M -20 -5 L 7 -5 L 17 -14 C 22 -18 27 -15 24 -8 L 20 0 L 24 8 C 27 15 22 18 17 14 L 7 5 L -20 5 L -14 0 Z"
+                fill="#f8fafc" stroke="#14532d" stroke-width="2" stroke-linejoin="round" />
+              <path d="M 2 -5 L -7 -18 L 2 -18 L 15 -4 M 2 5 L -7 18 L 2 18 L 15 4"
+                fill="#dcfce7" stroke="#166534" stroke-width="1.7" stroke-linejoin="round" />
+            </g>
           </defs>
           <rect width="{width}" height="{height}" rx="18" class="graph-bg" />
           <rect x="20" y="20" width="{width - 40}" height="{height - 40}" rx="16" class="graph-frame" />
           {''.join(grid_lines)}
           {''.join(edge_markup)}
+          {''.join(plane_markup)}
           {''.join(node_markup)}
         </svg>
       </div>
@@ -1162,22 +1265,87 @@ def show_matrix(matrix: list[list[int]]) -> None:
     st.dataframe(df, use_container_width=True)
 
 
+def city_description(city: City) -> str:
+    if city.country == "Peru":
+        return (
+            "Ciudad clave dentro del circuito peruano de la red, conectada con rutas "
+            "nacionales y enlaces hacia otros paises."
+        )
+    if city.country == "Colombia":
+        return (
+            "Nodo importante de la red colombiana, util para analizar conexiones "
+            "regionales y rutas con escalas."
+        )
+    if city.country in {"Mexico", "Guatemala", "El Salvador", "Honduras", "Nicaragua", "Costa Rica", "Panama"}:
+        return (
+            "Ciudad estrategica de Centroamerica y Mexico, representada como punto "
+            "de enlace entre rutas internacionales."
+        )
+    if city.country in {"Cuba", "Republica Dominicana", "Puerto Rico"}:
+        return (
+            "Destino del Caribe dentro del digrafo, util para observar conexiones "
+            "aereas entre islas y ciudades continentales."
+        )
+    if city.country in {"Espana", "Reino Unido"}:
+        return (
+            "Nodo europeo de largo alcance que muestra como la red se extiende fuera "
+            "de America Latina."
+        )
+    return (
+        "Ciudad sudamericana integrada al modelo para estudiar relaciones directas "
+        "y rutas eficientes dentro de la matriz."
+    )
+
+
 def show_city_catalog() -> None:
-    data = [
-        {
-            "Ciudad": city.name,
-            "Pais": city.country,
-            "Latitud": city.lat,
-            "Longitud": city.lon,
-            "Nodo": i,
-        }
+    matrix = st.session_state.matrix
+    st.caption(
+        "Catalogo visual de ciudades de la red. Cada tarjeta muestra su nodo, pais, coordenadas y conexiones directas."
+    )
+
+    search = st.text_input("Filtrar ciudades", placeholder="Escribe una ciudad o pais")
+    filtered = [
+        (i, city)
         for i, city in enumerate(CITIES)
+        if not search
+        or search.lower() in city.name.lower()
+        or search.lower() in city.country.lower()
     ]
-    st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+
+    cols = st.columns(3)
+    for card_index, (i, city) in enumerate(filtered):
+        outgoing = sum(matrix[i])
+        incoming = sum(row[i] for row in matrix)
+        with cols[card_index % 3]:
+            st.markdown(
+                f"""
+                <div class="city-card">
+                    <div class="city-visual">
+                        <div>
+                            <strong>{html_lib.escape(city.name)}</strong>
+                            <span>{html_lib.escape(city.country)} - Nodo {i}</span>
+                        </div>
+                    </div>
+                    <div class="city-card-body">
+                        <h3>{html_lib.escape(city.name)}</h3>
+                        <div class="city-tags">
+                            <span class="city-tag">{html_lib.escape(city.country)}</span>
+                            <span class="city-tag">Nodo {i}</span>
+                            <span class="city-tag">{outgoing} salidas</span>
+                            <span class="city-tag">{incoming} entradas</span>
+                        </div>
+                        <p>{html_lib.escape(city_description(city))}</p>
+                        <p><strong>Coordenadas:</strong> {city.lat:.2f}, {city.lon:.2f}</p>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 def show_about() -> None:
     st.subheader("Sobre nosotros")
+    st.image(UPC_LOGO_URL, width=180)
     st.markdown("""
         **Universidad Peruana de Ciencias Aplicadas**  
         **Curso:** Matematica Discreta (1AMA0708) - NRC 13224  
@@ -1223,32 +1391,37 @@ def show_about() -> None:
     )
 
 
-def optional_city_selectbox(
-    label: str, value: str | None, empty_label: str
-) -> str | None:
-    options = [""] + CITY_NAMES
-    index = options.index(value) if value in CITY_NAMES else 0
+def optional_city_selectbox(label: str, state_key: str, empty_label: str) -> str | None:
+    widget_key = f"{state_key}_select"
     selected = st.sidebar.selectbox(
         label,
-        options,
-        index=index,
-        format_func=lambda city: empty_label if city == "" else city,
+        CITY_NAMES,
+        index=None,
+        placeholder=empty_label,
+        key=widget_key,
     )
-    return selected or None
+    st.session_state[state_key] = selected
+    return selected
+
+
+def clear_city_selection(state_key: str) -> None:
+    st.session_state[state_key] = None
+    st.session_state[f"{state_key}_select"] = None
 
 
 def sidebar(matrix: list[list[int]]) -> None:
+    st.sidebar.image(UPC_LOGO_URL, width=110)
     st.sidebar.title("RouteMatrix")
     st.sidebar.caption("Relacion binaria R y matriz M")
 
     st.session_state.origin = optional_city_selectbox(
         "Ciudad de origen",
-        st.session_state.origin,
+        "origin",
         "Selecciona origen",
     )
     st.session_state.dest = optional_city_selectbox(
         "Ciudad de destino",
-        st.session_state.dest,
+        "dest",
         "Selecciona destino",
     )
 
@@ -1273,6 +1446,7 @@ def sidebar(matrix: list[list[int]]) -> None:
     if st.sidebar.button("Mostrar mapa completo", use_container_width=True):
         st.session_state.selected_route = None
         st.session_state.last_result = None
+        st.session_state.active_section = "Mapa"
         st.rerun()
 
     st.sidebar.divider()
